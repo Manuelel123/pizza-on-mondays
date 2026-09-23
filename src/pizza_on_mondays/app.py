@@ -1,6 +1,11 @@
+import os
+import tempfile
+
 import pandas as pd
+import quantstats as qs
 import seaborn as sns
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 
 SECTORS = {
@@ -31,6 +36,15 @@ SECTOR_ICONS = {
 
 TITLE_COLOR = "#87CEFA"  # azul claro
 
+# ETFs líquidos: se pueden comprar directamente, a diferencia de un índice puro (ej. ^GSPC).
+BENCHMARK_TICKERS = {
+    "S&P 500 (SPY)": "SPY",
+    "Nasdaq 100 (QQQ)": "QQQ",
+    "Dow Jones (DIA)": "DIA",
+    "Small Caps (IWM)": "IWM",
+    "Oro (GLD)": "GLD",
+}
+
 
 def colored_title(text: str) -> None:
     st.markdown(f"<h1 style='color:{TITLE_COLOR}'>{text}</h1>", unsafe_allow_html=True)
@@ -46,6 +60,40 @@ def load_returns(tickers: list[str], start: str, end: str) -> pd.DataFrame:
     data = data.ffill()  # NO miedo
     data = data.bfill()  # miedo te crea un lookahead bias
     return data.pct_change().dropna()
+
+
+def all_sector_tickers() -> list[str]:
+    return sorted({ticker for sector in SECTORS.values() for ticker in sector["stocks"]})
+
+
+@st.cache_data
+def load_price_returns(ticker: str, start: str, end: str) -> pd.Series:
+    data = yf.download(ticker, start=start, end=end)["Close"]
+    if isinstance(data, pd.DataFrame):
+        data = data.iloc[:, 0]
+    data = data.ffill().bfill()
+    return data.pct_change().dropna().rename(ticker)
+
+
+@st.cache_data(show_spinner=False)
+def build_quantstats_report(
+    returns: pd.Series, benchmark: pd.Series, asset: str, benchmark_ticker: str
+) -> str:
+    """Genera el tearsheet HTML de quantstats (gráficos embebidos como SVG)."""
+    fd, output_path = tempfile.mkstemp(suffix=".html")
+    os.close(fd)
+    try:
+        qs.reports.html(
+            returns,
+            benchmark=benchmark,
+            output=output_path,
+            title=f"{asset} vs {benchmark_ticker}",
+            download_filename=f"quantstats_{asset}_vs_{benchmark_ticker}.html",
+        )
+        with open(output_path, encoding="utf-8") as f:
+            return f.read()
+    finally:
+        os.remove(output_path)
 
 
 def build_summary(returns: pd.DataFrame, momentum_window: int = 21) -> pd.DataFrame:
@@ -116,10 +164,7 @@ def build_recommendation(summary: pd.DataFrame, momentum_window: int = 21) -> st
     return "\n".join(lines)
 
 
-def main() -> None:
-    st.set_page_config(page_title="Pizza on Mondays", layout="wide")
-    colored_title("🍕 Pizza on Mondays")
-
+def render_sector_tab() -> None:
     sector_name = st.selectbox(
         "Sector",
         list(SECTORS.keys()),
@@ -184,6 +229,81 @@ def main() -> None:
         st.pyplot(fig.figure)
     else:
         st.info("Elegí al menos dos tickers para ver la dispersión.")
+
+
+def render_quantstats_tab() -> None:
+    colored_subheader("📈 Activo vs. Benchmark (quantstats)")
+    st.caption(
+        "Elegí un activo y un benchmark invertible (un ETF que efectivamente puedas "
+        "comprar, no un índice puro como el ^GSPC) para generar el tearsheet completo "
+        "de quantstats: retornos, drawdowns, Sharpe, Sortino y demás métricas estándar."
+    )
+
+    col1, col2 = st.columns(2)
+    asset_label = col1.selectbox(
+        "Activo a analizar",
+        [*all_sector_tickers(), "Personalizado"],
+        key="qs_asset_label",
+    )
+    if asset_label == "Personalizado":
+        asset = col1.text_input(
+            "Ticker del activo", value="AAPL", key="qs_asset_custom"
+        ).strip().upper()
+    else:
+        asset = asset_label
+
+    benchmark_label = col2.selectbox(
+        "Benchmark",
+        [*BENCHMARK_TICKERS.keys(), "Personalizado"],
+        key="qs_benchmark_label",
+    )
+    if benchmark_label == "Personalizado":
+        benchmark_ticker = col2.text_input(
+            "Ticker del benchmark", value="SPY", key="qs_benchmark_custom"
+        ).strip().upper()
+    else:
+        benchmark_ticker = BENCHMARK_TICKERS[benchmark_label]
+
+    col3, col4 = st.columns(2)
+    start = col3.date_input("Desde", value=pd.Timestamp("2020-01-01"), key="qs_start")
+    end = col4.date_input("Hasta", value=pd.Timestamp.today(), key="qs_end")
+
+    if not asset:
+        st.info("Ingresá un ticker de activo.")
+        return
+    if not benchmark_ticker:
+        st.info("Ingresá un ticker de benchmark.")
+        return
+    if asset == benchmark_ticker:
+        st.warning("Elegí un activo distinto al benchmark para poder compararlos.")
+        return
+
+    if st.button("Generar análisis", key="qs_generate"):
+        with st.spinner("Descargando datos y generando el tearsheet de quantstats..."):
+            asset_returns = load_price_returns(asset, str(start), str(end))
+            benchmark_returns = load_price_returns(benchmark_ticker, str(start), str(end))
+
+            if asset_returns.empty or benchmark_returns.empty:
+                st.error("No se encontraron datos para el período y tickers seleccionados.")
+                return
+
+            html_report = build_quantstats_report(
+                asset_returns, benchmark_returns, asset, benchmark_ticker
+            )
+        components.html(html_report, height=1600, scrolling=True)
+
+
+def main() -> None:
+    st.set_page_config(page_title="Pizza on Mondays", layout="wide")
+    colored_title("🍕 Pizza on Mondays")
+
+    tab_sectores, tab_quantstats = st.tabs(
+        ["📊 Análisis por sector", "📈 QuantStats: Activo vs Benchmark"]
+    )
+    with tab_sectores:
+        render_sector_tab()
+    with tab_quantstats:
+        render_quantstats_tab()
 
 
 if __name__ == "__main__":

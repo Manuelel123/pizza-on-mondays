@@ -32,6 +32,7 @@ SECTORS = {
 SECTOR_ICONS = {
     "Oil & Gas": "🛢️",
     "Real Estate": "🏢",
+    "Criptomonedas": "🪙",
 }
 
 TITLE_COLOR = "#87CEFA"  # azul claro

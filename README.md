@@ -26,6 +26,7 @@ Lo principal:
 - **Recomendación automática**: una lectura en texto plano de esas métricas, generada en cada corrida.
 - **Simulación de payoff**: proyectá un capital inicial sobre cada activo y sobre una cartera equiponderada.
 - **Datos en vivo**: precios descargados de Yahoo Finance vía [yfinance](https://github.com/ranaroussi/yfinance), sin datasets estáticos.
+- **Descriptor de empresas** 🔎 (página aparte): ingresando un ticker, arma una descripción de la empresa a partir de sus fundamentals (perfil, valoración, rentabilidad, deuda, dividendos y estados financieros).
 
 > ⚠️ Todo lo que muestra la app es una lectura descriptiva de datos históricos, no asesoramiento financiero.
 
@@ -118,6 +119,18 @@ if len(tickers) >= 2:
 
 **En la app:** un selector múltiple de tickers y, al elegir dos o más, una matriz de gráficos de dispersión (pairplot de seaborn) mostrando cómo se relacionan los retornos diarios entre esos activos.
 
+### 9. Descriptor de empresas (página aparte)
+
+Vive en [`pages/1_🔎_Descriptor_de_empresas.py`](src/pizza_on_mondays/pages/1_🔎_Descriptor_de_empresas.py); Streamlit la detecta sola por estar en la carpeta `pages/`.
+
+```python
+ticker = st.text_input("Ticker de la acción (ej. AAPL, XOM, O)").strip().upper()
+info, financials = load_fundamentals(ticker)  # yf.Ticker(ticker).info + estados financieros
+st.markdown(build_company_description(info))
+```
+
+**En la app:** en la barra lateral aparece *🔎 Descriptor de empresas*. Al ingresar un ticker muestra una descripción en viñetas (tamaño, valoración, rentabilidad, salud financiera, dividendos, beta y consenso de analistas), 8 métricas clave, la descripción del negocio y los estados financieros anuales. Si el ticker no existe, muestra un aviso; para criptos/ETFs, solo el perfil básico.
+
 ## Rendimiento
 
 La descarga de precios (`load_returns`) es lo más costoso de cada corrida, porque depende de la API de Yahoo Finance. Por eso está detrás de `@st.cache_data`: Streamlit cachea el resultado por combinación de `(tickers, start, end)`, así que cambiar un selector que no afecta esos parámetros (por ejemplo, el capital inicial o los tickers a comparar en la dispersión) **no vuelve a descargar nada** — solo recalcula sobre los datos ya cacheados.
@@ -138,7 +151,10 @@ uv run streamlit run src/pizza_on_mondays/app.py
 ```
 src/pizza_on_mondays/
 ├── __init__.py
-└── app.py          # app de Streamlit (lógica y UI)
+├── app.py          # entrypoint de Streamlit: página de Sectores
+├── ui.py           # helpers de estilo compartidos entre páginas
+└── pages/
+    └── 1_🔎_Descriptor_de_empresas.py   # ficha de una empresa con fundamentals de yfinance
 notebooks/
 └── ideas.ipynb      # exploración y prototipos
 ```

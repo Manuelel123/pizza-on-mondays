@@ -298,13 +298,22 @@ def main() -> None:
     st.set_page_config(page_title="Pizza on Mondays", layout="wide")
     colored_title("🍕 Pizza on Mondays")
 
-    tab_sectores, tab_quantstats = st.tabs(
-        ["📊 Análisis por sector", "📈 QuantStats: Activo vs Benchmark"]
-    )
-    with tab_sectores:
-        render_sector_tab()
-    with tab_quantstats:
-        render_quantstats_tab()
+    pages = [
+        st.Page(
+            render_sector_tab,
+            title="Análisis por sector",
+            icon="📊",
+            url_path="analisis-sector",
+            default=True,
+        ),
+        st.Page(
+            render_quantstats_tab,
+            title="QuantStats: Activo vs Benchmark",
+            icon="📈",
+            url_path="quantstats",
+        ),
+    ]
+    st.navigation(pages).run()
 
 
 if __name__ == "__main__":
